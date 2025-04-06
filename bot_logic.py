@@ -23,3 +23,5 @@ Timeframe: {data.get("timeframe", "??")}
     notificar_telegram(msg.strip())
 
     return {"status": "simulado", "mensagem": "Sinal processado e enviado"}
+def iniciar_monitoramento():
+    print("🟢 Monitoramento iniciado (simulado)")
