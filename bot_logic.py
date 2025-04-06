@@ -1,3 +1,14 @@
+import os
+import ccxt
+
+binance = ccxt.binance({
+    'apiKey': os.getenv("BINANCE_API_KEY"),
+    'secret': os.getenv("BINANCE_API_SECRET"),
+    'enableRateLimit': True,
+    'options': {
+        'defaultType': 'future'  # Isso é para operar no mercado de Futuros
+    }
+})
 import time
 
 estado = {
@@ -37,3 +48,17 @@ Timeframe: {data.get("timeframe", "??")}
     return {"status": "simulado", "mensagem": "Sinal processado e enviado"}
 def iniciar_monitoramento():
     print("🟢 Monitoramento iniciado (simulado)")
+from telegram_utils import notificar_telegram
+
+def executar_ordem_real(par, tipo, quantidade):
+    try:
+        if tipo.lower() == "buy":
+            ordem = binance.create_market_buy_order(par, quantidade)
+        else:
+            ordem = binance.create_market_sell_order(par, quantidade)
+        notificar_telegram(f"✅ Ordem REAL enviada: {tipo.upper()} {par} - Qtd: {quantidade}")
+        return ordem
+    except Exception as e:
+        notificar_telegram(f"❌ Erro na ordem real: {e}")
+        print(f"Erro: {e}")
+        return None
