@@ -144,3 +144,5 @@ def acompanhar_preco(par, tipo, tp1, tp2, tp3, sl):
     finally:
         estado["em_operacao"] = False
         estado["par"] = ""
+def iniciar_monitoramento():
+    print("🟢 Monitoramento iniciado")
