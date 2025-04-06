@@ -11,11 +11,11 @@ binance = ccxt.binance({
     'enableRateLimit': True,
     'options': {
         'defaultType': 'future',
-        'defaultMarket': 'futures'
+        'positionSide': 'BOTH'
     }
 })
 
-# 🔁 Estado da operação
+# 🔁 Estado de operação
 estado = {
     "em_operacao": False,
     "par": "",
@@ -29,36 +29,46 @@ estado = {
     "hora_ultima_checagem": time.time()
 }
 
-# 🔧 Cálculo da quantidade com base no saldo e alavancagem
+# 🔧 Cálculo de posição
 def calcular_quantidade(ativo, preco_entrada, risco_percent=2, alavancagem=5):
-    saldo = 50  # Valor fixo em USDT (ajustável)
+    saldo = 50
     valor_total = saldo * alavancagem
     quantidade = valor_total / float(preco_entrada)
     return round(quantidade, 3)
 
-# ✅ Executa ordem real com logs
+# ✅ Executa ordem real
 def executar_ordem_real(par, tipo, quantidade):
     try:
-        print(f"📤 Enviando ordem: {tipo.upper()} {par} - Qtd: {quantidade}")
-        if tipo.lower() == "buy":
+        print(f"🔽 Enviando ordem real...\nPar: {par} | Tipo: {tipo.upper()} | Qtd: {quantidade}")
+        if tipo == "buy":
             ordem = binance.create_market_buy_order(par, quantidade)
         else:
             ordem = binance.create_market_sell_order(par, quantity=quantidade)
-        print("✅ Ordem executada com sucesso!")
         notificar_telegram(f"✅ ORDEM REAL ENVIADA\nPar: {par}\nTipo: {tipo.upper()}\nQtd: {quantidade}")
+        print("✅ Ordem enviada com sucesso!")
         return ordem
     except Exception as e:
-        print(f"❌ Erro na ordem: {e}")
         notificar_telegram(f"❌ ERRO ao enviar ordem: {e}")
+        print(f"❌ ERRO ao enviar ordem: {e}")
         return None
 
-# 🧠 Processamento do sinal recebido
+# 🧠 Processa sinal recebido
 def process_signal(data):
     if estado["em_operacao"]:
-        notificar_telegram(f"📨 NOVO SINAL RECEBIDO MAS IGNORADO (Já em operação)\nPar: {data.get('ativo')}\nTipo: {data.get('tipo')}")
+        notificar_telegram(f"""
+⚠️ SINAL IGNORADO (Já em operação)
+
+📡 Um novo sinal foi recebido, mas o bot está atualmente em operação.
+
+🔁 Sinal:
+• Par: {data.get('ativo')}
+• Tipo: {data.get('tipo').upper()}
+
+⏳ Aguarde o encerramento da operação atual para novos sinais serem processados.
+""".strip())
         return {"status": "em_operacao", "mensagem": "Sinal ignorado pois já está em operação"}
 
-    # 🔍 Coleta e tratamento dos dados do sinal
+    # 📥 Dados do sinal
     par = data.get("ativo", "BTCUSDT")
     entrada = float(data.get("entrada", "0"))
     tipo = data.get("tipo", "buy").lower()
@@ -67,14 +77,14 @@ def process_signal(data):
     tp3_percent = float(data.get("tp3_percent", "6"))
     risco_percent = float(data.get("risco_percent", "2"))
 
-    # 🎯 Cálculo de alvos e stop
+    # 🎯 Alvos e SL
     tp1 = entrada * (1 + tp1_percent / 100) if tipo == "buy" else entrada * (1 - tp1_percent / 100)
     tp2 = entrada * (1 + tp2_percent / 100) if tipo == "buy" else entrada * (1 - tp2_percent / 100)
     tp3 = entrada * (1 + tp3_percent / 100) if tipo == "buy" else entrada * (1 - tp3_percent / 100)
     sl = entrada * (1 - 0.03) if tipo == "buy" else entrada * (1 + 0.03)
 
+    # ⚙️ Atualiza estado
     quantidade = calcular_quantidade(par, entrada, risco_percent)
-
     estado.update({
         "em_operacao": True,
         "par": par,
@@ -88,43 +98,35 @@ def process_signal(data):
         "hora_ultima_checagem": time.time()
     })
 
-    # ✅ Executa ordem real
+    # 🚀 Envia ordem
     executar_ordem_real(par, tipo, quantidade)
 
-    # 📢 Notifica operação no Telegram com mensagem profissional
+    # 📢 Alerta entrada
     msg = f"""
-📢 NOVA OPERAÇÃO EXECUTADA
+📈 NOVA OPERAÇÃO ({tipo.upper()})
+────────────────────────────
+🪙 Par: {par}
+🎯 Entrada: {entrada}
+⚖️ Alavancagem: 5x
+🔹 TP1: {round(tp1, 2)}
+🔹 TP2: {round(tp2, 2)}
+🔹 TP3: {round(tp3, 2)}
+❌ SL: {round(sl, 2)}
+📦 Quantidade: {quantidade}
+"""
+    notificar_telegram(msg.strip())
 
-🔹 Par: {par}
-📈 Direção: {tipo.upper()}
-💰 Entrada: {entrada:,.2f}
-📊 Alavancagem: 5x
-🔹 Quantidade: {quantidade}
-
-🎯 Take Profits:
-• TP1 ➜ {tp1:,.2f}
-• TP2 ➜ {tp2:,.2f}
-• TP3 ➜ {tp3:,.2f}
-
-🛑 Stop Loss: {sl:,.2f}
-🕒 Timeframe: {data.get("timeframe", "??")}min
-""".strip()
-
-    notificar_telegram(msg)
-
-    # 🔁 Inicia monitoramento da operação
-    threading.Thread(target=acompanhar_preco, args=(par, tipo, tp1, tp2, tp3, sl, entrada)).start()
-
+    # 📊 Inicia acompanhamento
+    threading.Thread(target=acompanhar_preco, args=(par, tipo, tp1, tp2, tp3, sl)).start()
     return {"status": "ok", "mensagem": "Sinal processado"}
 
-# 📡 Monitoramento de preço com trailing stop
-def acompanhar_preco(par, tipo, tp1, tp2, tp3, sl, entrada):
+# 👁️ Acompanhamento de operação
+def acompanhar_preco(par, tipo, tp1, tp2, tp3, sl):
     stop_movel = sl
     try:
         while True:
             time.sleep(30)
-            ticker = binance.fetch_ticker(par)
-            preco_atual = ticker['last']
+            preco_atual = binance.fetch_ticker(par)['last']
 
             if tipo == "buy":
                 if preco_atual >= tp3:
@@ -132,12 +134,12 @@ def acompanhar_preco(par, tipo, tp1, tp2, tp3, sl, entrada):
                     break
                 elif preco_atual >= tp2:
                     stop_movel = tp1
-                    notificar_telegram("🟢 Preço passou do TP2. Stop movido para TP1.")
+                    notificar_telegram("🟢 TP2 atingido. Stop movido para TP1.")
                 elif preco_atual >= tp1:
-                    stop_movel = entrada
-                    notificar_telegram("🟡 TP1 atingido. Stop movido para o ponto de entrada.")
+                    stop_movel = estado["entrada"]
+                    notificar_telegram("🟡 TP1 atingido. Stop no ponto de entrada.")
                 elif preco_atual <= stop_movel:
-                    notificar_telegram("🛑 STOP atingido. Saindo da operação.")
+                    notificar_telegram("🛑 STOP atingido. Encerrando operação.")
                     break
             else:
                 if preco_atual <= tp3:
@@ -145,12 +147,12 @@ def acompanhar_preco(par, tipo, tp1, tp2, tp3, sl, entrada):
                     break
                 elif preco_atual <= tp2:
                     stop_movel = tp1
-                    notificar_telegram("🟢 Preço passou do TP2. Stop movido para TP1.")
+                    notificar_telegram("🟢 TP2 atingido. Stop movido para TP1.")
                 elif preco_atual <= tp1:
-                    stop_movel = entrada
-                    notificar_telegram("🟡 TP1 atingido. Stop movido para o ponto de entrada.")
+                    stop_movel = estado["entrada"]
+                    notificar_telegram("🟡 TP1 atingido. Stop no ponto de entrada.")
                 elif preco_atual >= stop_movel:
-                    notificar_telegram("🛑 STOP atingido. Saindo da operação.")
+                    notificar_telegram("🛑 STOP atingido. Encerrando operação.")
                     break
     except Exception as e:
         notificar_telegram(f"⚠️ Erro no acompanhamento: {e}")
@@ -158,6 +160,6 @@ def acompanhar_preco(par, tipo, tp1, tp2, tp3, sl, entrada):
         estado["em_operacao"] = False
         estado["par"] = ""
 
-# 🚦 Inicia o monitoramento do bot
+# 🟢 Inicializa o monitoramento geral
 def iniciar_monitoramento():
     print("🟢 Monitoramento iniciado")
