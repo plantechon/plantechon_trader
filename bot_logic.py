@@ -1,3 +1,17 @@
+import time
+
+estado = {
+    "em_operacao": False,
+    "par": "",
+    "entrada": 0.0,
+    "tp1": 0.0,
+    "tp2": 0.0,
+    "tp3": 0.0,
+    "sl": 0.0,
+    "tipo": "",
+    "quantidade": 0.0,
+    "hora_ultima_checagem": time.time()
+}
 from telegram_utils import notificar_telegram
 
 def process_signal(data):
