@@ -5,13 +5,11 @@ def process_signal(data):
     entrada = data.get("entrada", "0.0")
     tipo = data.get("tipo", "buy").upper()
 
-    # Atualiza estado interno (simulação)
     estado["em_operacao"] = True
     estado["par"] = ativo
     estado["entrada"] = entrada
     estado["tipo"] = tipo
 
-    # Monta mensagem Telegram
     msg = f"""
 📈 NOVA OPERAÇÃO ({tipo})
 Par: {ativo}
