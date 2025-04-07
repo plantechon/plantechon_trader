@@ -1,30 +1,51 @@
-from flask import Flask, request, jsonify
-from bot_logic import process_signal, iniciar_monitoramento
+from flask import Flask, request
+from dotenv import load_dotenv
+import os
+import threading
+
+from bot_logic import process_signal, iniciar_monitoramento, estado
 from telegram_utils import notificar_telegram
 from status_scheduler import iniciar_agendador
 
+load_dotenv()
+
 app = Flask(__name__)
 
-# Inicia os schedulers
-iniciar_agendador()
-iniciar_monitoramento()
+# 🔘 Flag de ativação
+bot_ativo = {"valor": True}
 
-@app.route("/webhook", methods=["POST"])
-def webhook():
+# ✅ Rota principal
+@app.route('/')
+def home():
+    return "🚀 Bot Plantechon Trader Online!"
+
+# 📩 Rota para sinais do TradingView
+@app.route('/webhook', methods=['POST'])
+def receber_sinal():
+    if not bot_ativo["valor"]:
+        notificar_telegram("⚠️ Sinal recebido mas o bot está desligado.")
+        return {"status": "desligado", "mensagem": "Bot está inativo"}
+
     data = request.json
-    timeframe = data.get("timeframe")
-    if timeframe not in ["60", "240"]:
-        return jsonify({"status": "ignorado", "motivo": "Timeframe nao permitido"}), 200
+    resposta = process_signal(data)
+    return resposta
 
-    try:
-        resultado = process_signal(data)
-        return jsonify(resultado)
-    except Exception as e:
-        notificar_telegram(f"⚠️ Erro no bot: {str(e)}")
-        return jsonify({"erro": str(e)}), 400
+# 🟢 Comando para ligar o bot
+@app.route(f'/bot{os.getenv("BOT_TOKEN")}/ligar', methods=['GET', 'POST'])
+def ligar():
+    bot_ativo["valor"] = True
+    notificar_telegram("✅ Bot ativado via comando.")
+    return {"status": "ligado"}
 
-# ESSA PARTE AQUI É FUNDAMENTAL
+# 🔴 Comando para desligar o bot
+@app.route(f'/bot{os.getenv("BOT_TOKEN")}/desligar', methods=['GET', 'POST'])
+def desligar():
+    bot_ativo["valor"] = False
+    notificar_telegram("🛑 Bot desativado via comando.")
+    return {"status": "desligado"}
+
+# 🚀 Inicializa agendador e monitoramento
 if __name__ == "__main__":
-    import os
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    iniciar_agendador()
+    threading.Thread(target=iniciar_monitoramento).start()
+    app.run(host="0.0.0.0", port=10000)
