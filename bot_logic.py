@@ -15,7 +15,7 @@ binance = ccxt.binance({
     }
 })
 
-# 🔁 Estado de operação
+# 🔁 Estado global do bot
 estado = {
     "em_operacao": False,
     "par": "",
@@ -26,7 +26,8 @@ estado = {
     "sl": 0.0,
     "tipo": "",
     "quantidade": 0.0,
-    "hora_ultima_checagem": time.time()
+    "hora_ultima_checagem": time.time(),
+    "ativado": True  # 👈 Controle LIGAR/DESLIGAR
 }
 
 # 🔧 Cálculo de posição
@@ -36,7 +37,7 @@ def calcular_quantidade(ativo, preco_entrada, risco_percent=2, alavancagem=5):
     quantidade = valor_total / float(preco_entrada)
     return round(quantidade, 3)
 
-# ✅ Executa ordem real
+# ✅ Envia ordem real
 def executar_ordem_real(par, tipo, quantidade):
     try:
         print(f"🔽 Enviando ordem real...\nPar: {par} | Tipo: {tipo.upper()} | Qtd: {quantidade}")
@@ -54,6 +55,10 @@ def executar_ordem_real(par, tipo, quantidade):
 
 # 🧠 Processa sinal recebido
 def process_signal(data):
+    if not estado["ativado"]:
+        print("⚠️ Bot está desativado. Ignorando sinal.")
+        return {"status": "desativado", "mensagem": "Bot desativado"}
+
     if estado["em_operacao"]:
         notificar_telegram(f"""
 ⚠️ SINAL IGNORADO (Já em operação)
@@ -68,7 +73,7 @@ def process_signal(data):
 """.strip())
         return {"status": "em_operacao", "mensagem": "Sinal ignorado pois já está em operação"}
 
-    # 📥 Dados do sinal
+    # 📥 Coleta dados
     par = data.get("ativo", "BTCUSDT")
     entrada = float(data.get("entrada", "0"))
     tipo = data.get("tipo", "buy").lower()
@@ -77,7 +82,7 @@ def process_signal(data):
     tp3_percent = float(data.get("tp3_percent", "6"))
     risco_percent = float(data.get("risco_percent", "2"))
 
-    # 🎯 Alvos e SL
+    # 🎯 Calcula TP/SL
     tp1 = entrada * (1 + tp1_percent / 100) if tipo == "buy" else entrada * (1 - tp1_percent / 100)
     tp2 = entrada * (1 + tp2_percent / 100) if tipo == "buy" else entrada * (1 - tp2_percent / 100)
     tp3 = entrada * (1 + tp3_percent / 100) if tipo == "buy" else entrada * (1 - tp3_percent / 100)
@@ -98,10 +103,10 @@ def process_signal(data):
         "hora_ultima_checagem": time.time()
     })
 
-    # 🚀 Envia ordem
+    # 🚀 Executa
     executar_ordem_real(par, tipo, quantidade)
 
-    # 📢 Alerta entrada
+    # 📢 Notificação entrada
     msg = f"""
 📈 NOVA OPERAÇÃO ({tipo.upper()})
 ────────────────────────────
@@ -160,6 +165,6 @@ def acompanhar_preco(par, tipo, tp1, tp2, tp3, sl):
         estado["em_operacao"] = False
         estado["par"] = ""
 
-# 🟢 Inicializa o monitoramento geral
+# ▶️ Inicializa monitoramento
 def iniciar_monitoramento():
     print("🟢 Monitoramento iniciado")
