@@ -15,7 +15,7 @@ binance = ccxt.binance({
     }
 })
 
-# 🔁 Estado global do bot
+# 🔁 Estado de operação
 estado = {
     "em_operacao": False,
     "par": "",
@@ -27,7 +27,7 @@ estado = {
     "tipo": "",
     "quantidade": 0.0,
     "hora_ultima_checagem": time.time(),
-    "ativado": True  # 👈 Controle LIGAR/DESLIGAR
+    "bot_ativo": True
 }
 
 # 🔧 Cálculo de posição
@@ -37,14 +37,14 @@ def calcular_quantidade(ativo, preco_entrada, risco_percent=2, alavancagem=5):
     quantidade = valor_total / float(preco_entrada)
     return round(quantidade, 3)
 
-# ✅ Envia ordem real
+# ✅ Executa ordem real
 def executar_ordem_real(par, tipo, quantidade):
     try:
         print(f"🔽 Enviando ordem real...\nPar: {par} | Tipo: {tipo.upper()} | Qtd: {quantidade}")
         if tipo == "buy":
             ordem = binance.create_market_buy_order(par, quantidade)
         else:
-            ordem = binance.create_market_sell_order(par, quantity=quantidade)
+            ordem = binance.create_market_sell_order(par, quantidade)
         notificar_telegram(f"✅ ORDEM REAL ENVIADA\nPar: {par}\nTipo: {tipo.upper()}\nQtd: {quantidade}")
         print("✅ Ordem enviada com sucesso!")
         return ordem
@@ -55,25 +55,25 @@ def executar_ordem_real(par, tipo, quantidade):
 
 # 🧠 Processa sinal recebido
 def process_signal(data):
-    if not estado["ativado"]:
-        print("⚠️ Bot está desativado. Ignorando sinal.")
-        return {"status": "desativado", "mensagem": "Bot desativado"}
+    if not estado["bot_ativo"]:
+        notificar_telegram("⚠️ Bot está DESATIVADO. Comando ignorado.")
+        return {"status": "inativo", "mensagem": "Bot desligado"}
 
     if estado["em_operacao"]:
         notificar_telegram(f"""
 ⚠️ SINAL IGNORADO (Já em operação)
 
-📡 Um novo sinal foi recebido, mas o bot está atualmente em operação.
+📡 Novo sinal recebido, mas o bot está em operação.
 
 🔁 Sinal:
 • Par: {data.get('ativo')}
 • Tipo: {data.get('tipo').upper()}
 
-⏳ Aguarde o encerramento da operação atual para novos sinais serem processados.
+⏳ Aguarde o encerramento da operação atual.
 """.strip())
         return {"status": "em_operacao", "mensagem": "Sinal ignorado pois já está em operação"}
 
-    # 📥 Coleta dados
+    # 📥 Dados do sinal
     par = data.get("ativo", "BTCUSDT")
     entrada = float(data.get("entrada", "0"))
     tipo = data.get("tipo", "buy").lower()
@@ -82,7 +82,7 @@ def process_signal(data):
     tp3_percent = float(data.get("tp3_percent", "6"))
     risco_percent = float(data.get("risco_percent", "2"))
 
-    # 🎯 Calcula TP/SL
+    # 🎯 Alvos e SL
     tp1 = entrada * (1 + tp1_percent / 100) if tipo == "buy" else entrada * (1 - tp1_percent / 100)
     tp2 = entrada * (1 + tp2_percent / 100) if tipo == "buy" else entrada * (1 - tp2_percent / 100)
     tp3 = entrada * (1 + tp3_percent / 100) if tipo == "buy" else entrada * (1 - tp3_percent / 100)
@@ -103,10 +103,10 @@ def process_signal(data):
         "hora_ultima_checagem": time.time()
     })
 
-    # 🚀 Executa
+    # 🚀 Envia ordem
     executar_ordem_real(par, tipo, quantidade)
 
-    # 📢 Notificação entrada
+    # 📢 Alerta entrada
     msg = f"""
 📈 NOVA OPERAÇÃO ({tipo.upper()})
 ────────────────────────────
@@ -130,7 +130,7 @@ def acompanhar_preco(par, tipo, tp1, tp2, tp3, sl):
     stop_movel = sl
     try:
         while True:
-            time.sleep(30)
+            time.sleep(60)  # aumentado para evitar ban por excesso de requisição
             preco_atual = binance.fetch_ticker(par)['last']
 
             if tipo == "buy":
@@ -165,6 +165,6 @@ def acompanhar_preco(par, tipo, tp1, tp2, tp3, sl):
         estado["em_operacao"] = False
         estado["par"] = ""
 
-# ▶️ Inicializa monitoramento
+# 🟢 Inicializa o monitoramento geral
 def iniciar_monitoramento():
     print("🟢 Monitoramento iniciado")
