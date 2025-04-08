@@ -1,6 +1,5 @@
 import os
 import time
-import threading
 import ccxt
 from telegram_utils import notificar_telegram
 
@@ -61,49 +60,6 @@ def executar_ordem_real(par, tipo, quantidade):
         print(f"[ERRO] Falha ao enviar ordem: {e}", flush=True)
         return None
 
-# 🧠 Processa sinal recebido
-def process_signal(data):
-    print("[SINAL] Sinal recebido:")
-    print(data, flush=True)
-
-    if not estado.get("ativado"):
-        print("[STATUS] Bot desativado. Ignorando sinal.", flush=True)
-        return {"status": "desativado", "mensagem": "Bot desativado"}
-
-    if estado["em_operacao"]:
-        notificar_telegram(
-            f"⚠️ SINAL IGNORADO (Já em operação)\n"
-            f"📡 Novo sinal recebido:\n"
-            f"Par: {data.get('ativo')}\n"
-            f"Tipo: {data.get('tipo').upper()}\n"
-            f"⏳ Aguarde o fim da operação atual."
-        )
-        print("[SINAL] Ignorado: já em operação.", flush=True)
-        return {"status": "em_operacao", "mensagem": "Sinal ignorado pois já está em operação"}
-
-    # Dados do sinal
-    try:
-        par = data["ativo"]
-        entrada = float(data["entrada"])
-        tipo = data["tipo"].lower()
-        risco_percent = float(data.get("risco_percent", 2))
-        tp1 = entrada * (1 + float(data.get("tp1_percent", 2)) / 100) if tipo == "buy" else entrada * (1 - float(data.get("tp1_percent", 2)) / 100)
-        tp2 = entrada * (1 + float(data.get("tp2_percent", 4)) / 100) if tipo == "buy" else entrada * (1 - float(data.get("tp2_percent", 4)) / 100)
-        tp3 = entrada * (1 + float(data.get("tp3_percent", 6)) / 100) if tipo == "buy" else entrada * (1 - float(data.get("tp3_percent", 6)) / 100)
-        sl = entrada * (1 - 0.01) if tipo == "buy" else entrada * (1 + 0.01)
-        quantidade = calcular_quantidade(par, entrada, risco_percent)
-
-        estado.update({
-            "em_operacao": True,
-            "par": par,
-            "entrada": entrada,
-            "tp1": tp1,
-            "tp2": tp2,
-            "tp3": tp3,
-            "sl": sl,
-            "tipo": tipo,
-            "quantidade": quantidade
-        })
 # ❌ Fechar posição real (função chamada quando atinge o stop ou TP3)
 def fechar_posicao_real(par, tipo, quantidade):
     try:
@@ -129,10 +85,54 @@ def fechar_posicao_real(par, tipo, quantidade):
         print(f"[ERRO] Falha ao fechar posição: {e}", flush=True)
         return None
 
+# 🧠 Processa sinal recebido
+def process_signal(data):
+    print("[SINAL] Sinal recebido:")
+    print(data, flush=True)
+
+    if not estado.get("ativado"):
+        print("[STATUS] Bot desativado. Ignorando sinal.", flush=True)
+        return {"status": "desativado", "mensagem": "Bot desativado"}
+
+    if estado["em_operacao"]:
+        notificar_telegram(
+            f"⚠️ SINAL IGNORADO (Já em operação)\n"
+            f"📡 Novo sinal recebido:\n"
+            f"Par: {data.get('ativo')}\n"
+            f"Tipo: {data.get('tipo').upper()}\n"
+            f"⏳ Aguarde o fim da operação atual."
+        )
+        print("[SINAL] Ignorado: já em operação.", flush=True)
+        return {"status": "em_operacao", "mensagem": "Sinal ignorado pois já está em operação"}
+
+    try:
+        par = data["ativo"]
+        entrada = float(data["entrada"])
+        tipo = data["tipo"].lower()
+        risco_percent = float(data.get("risco_percent", 2))
+        tp1 = entrada * (1 + float(data.get("tp1_percent", 2)) / 100) if tipo == "buy" else entrada * (1 - float(data.get("tp1_percent", 2)) / 100)
+        tp2 = entrada * (1 + float(data.get("tp2_percent", 4)) / 100) if tipo == "buy" else entrada * (1 - float(data.get("tp2_percent", 4)) / 100)
+        tp3 = entrada * (1 + float(data.get("tp3_percent", 6)) / 100) if tipo == "buy" else entrada * (1 - float(data.get("tp3_percent", 6)) / 100)
+        sl = entrada * (1 - 0.01) if tipo == "buy" else entrada * (1 + 0.01)
+        quantidade = calcular_quantidade(par, entrada, risco_percent)
+
+        estado.update({
+            "em_operacao": True,
+            "par": par,
+            "entrada": entrada,
+            "tp1": tp1,
+            "tp2": tp2,
+            "tp3": tp3,
+            "sl": sl,
+            "tipo": tipo,
+            "quantidade": quantidade
+        })
+
         print("[ORDEM] Par: {} | Entrada: {} | Quantidade: {}".format(par, entrada, quantidade), flush=True)
         executar_ordem_real(par, tipo, quantidade)
 
         return {"status": "executado", "mensagem": "Sinal processado e ordem executada"}
+
     except Exception as e:
         print(f"[ERRO] Problema ao processar sinal: {e}", flush=True)
         notificar_telegram(f"❌ Erro ao processar sinal: {e}")
