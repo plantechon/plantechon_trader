@@ -137,3 +137,4 @@ def process_signal(data):
         print(f"[ERRO] Problema ao processar sinal: {e}", flush=True)
         notificar_telegram(f"❌ Erro ao processar sinal: {e}")
         return {"status": "erro", "mensagem": str(e)}
+__all__ = ["estado", "process_signal", "fechar_posicao_real"]
