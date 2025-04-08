@@ -104,6 +104,30 @@ def process_signal(data):
             "tipo": tipo,
             "quantidade": quantidade
         })
+# ❌ Fechar posição real (função chamada quando atinge o stop ou TP3)
+def fechar_posicao_real(par, tipo, quantidade):
+    try:
+        lado_oposto = "sell" if tipo == "buy" else "buy"
+        position_side = "LONG" if tipo == "buy" else "SHORT"
+
+        print(f"[FECHAMENTO] Enviando ordem para fechar {position_side} de {quantidade} {par}", flush=True)
+
+        ordem = binance.create_order(
+            symbol=par,
+            type="market",
+            side=lado_oposto,
+            amount=quantidade,
+            params={"positionSide": position_side}
+        )
+
+        notificar_telegram(f"📉 POSIÇÃO FECHADA: {par} | Lado: {tipo.upper()} | Qtd: {quantidade}")
+        print("[FECHAMENTO] Ordem de fechamento enviada com sucesso!", flush=True)
+        return ordem
+
+    except Exception as e:
+        notificar_telegram(f"❌ ERRO ao fechar posição: {e}")
+        print(f"[ERRO] Falha ao fechar posição: {e}", flush=True)
+        return None
 
         print("[ORDEM] Par: {} | Entrada: {} | Quantidade: {}".format(par, entrada, quantidade), flush=True)
         executar_ordem_real(par, tipo, quantidade)
