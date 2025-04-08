@@ -4,6 +4,7 @@ import json
 import websockets
 from telegram_utils import notificar_telegram
 from bot_logic import estado, fechar_posicao_real
+import threading
 
 # Flags para não repetir alertas
 avisado_tp1 = False
@@ -93,4 +94,12 @@ def iniciar_agendador():
     global avisado_tp1, avisado_tp2, avisado_tp3, avisado_sl
     avisado_tp1 = avisado_tp2 = avisado_tp3 = avisado_sl = False
     print("🟢 Monitoramento via WebSocket iniciado", flush=True)
-    asyncio.get_event_loop().create_task(monitorar_via_websocket())
+
+    try:
+        loop = asyncio.get_event_loop()
+        loop.create_task(monitorar_via_websocket())
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.create_task(monitorar_via_websocket())
+        threading.Thread(target=loop.run_forever, daemon=True).start()
