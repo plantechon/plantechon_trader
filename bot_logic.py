@@ -4,7 +4,7 @@ import threading
 import ccxt
 from telegram_utils import notificar_telegram
 
-# 🔐 Conexão com Binance Futuros (REMOVIDO positionSide para evitar erro -4061)
+# 🔐 Conexão com Binance Futuros (modo hedge compatível)
 binance = ccxt.binance({
     'apiKey': os.getenv("BINANCE_API_KEY"),
     'secret': os.getenv("BINANCE_API_SECRET"),
@@ -36,15 +36,23 @@ def calcular_quantidade(ativo, preco_entrada, risco_percent=2, alavancagem=5):
     quantidade = valor_total / float(preco_entrada)
     return round(quantidade, 3)
 
-# ✅ Executa ordem real
+# ✅ Executa ordem real com suporte ao modo HEDGE
 def executar_ordem_real(par, tipo, quantidade):
     try:
         print("[EXECUÇÃO] Enviando ordem real...", flush=True)
         print(f"Par: {par} | Tipo: {tipo.upper()} | Quantidade: {quantidade}", flush=True)
-        if tipo == "buy":
-            ordem = binance.create_market_buy_order(par, quantidade)
-        else:
-            ordem = binance.create_market_sell_order(par, quantidade)
+
+        side = "buy" if tipo == "buy" else "sell"
+        position_side = "LONG" if tipo == "buy" else "SHORT"
+
+        ordem = binance.create_order(
+            symbol=par,
+            type="market",
+            side=side,
+            amount=quantidade,
+            params={"positionSide": position_side}
+        )
+
         notificar_telegram(f"✅ ORDEM REAL ENVIADA\nPar: {par}\nTipo: {tipo.upper()}\nQtd: {quantidade}")
         print("[EXECUÇÃO] Ordem enviada com sucesso!", flush=True)
         return ordem
