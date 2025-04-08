@@ -14,79 +14,87 @@ avisado_sl = False
 
 async def monitorar_via_websocket():
     global avisado_tp1, avisado_tp2, avisado_tp3, avisado_sl
-    par = estado["par"].lower().replace("/", "")
-    url = f"wss://stream.binance.com:9443/ws/{par}@ticker"
 
-    async for websocket in websockets.connect(url):
+    while True:
         try:
-            async for message in websocket:
-                if not estado["em_operacao"]:
-                    continue
+            if not estado["em_operacao"]:
+                await asyncio.sleep(1)
+                continue
 
-                data = json.loads(message)
-                preco_atual = float(data["c"])
-                print(f"[MONITOR] Preço atual de {par.upper()}: {preco_atual}", flush=True)
+            par = estado["par"].lower().replace("/", "")
+            url = f"wss://stream.binance.com:9443/ws/{par}@ticker"
 
-                tipo = estado["tipo"]
-                entrada = estado["entrada"]
-                tp1 = estado["tp1"]
-                tp2 = estado["tp2"]
-                tp3 = estado["tp3"]
-                sl = estado["sl"]
-                quantidade = estado["quantidade"]
+            async with websockets.connect(url) as websocket:
+                print(f"[WS] Conectado ao WebSocket para {par.upper()}", flush=True)
 
-                if tipo == "buy":
-                    if preco_atual >= tp3 and not avisado_tp3:
-                        notificar_telegram(f"🎯 Atingido TP3 ({tp3:.2f}) para {par.upper()}! 🤑 Fechando operação.")
-                        fechar_posicao_real(par.upper(), tipo, quantidade)
-                        estado["em_operacao"] = False
-                        avisado_tp3 = True
+                async for message in websocket:
+                    if not estado["em_operacao"]:
+                        continue
 
-                    elif preco_atual >= tp2 and not avisado_tp2:
-                        notificar_telegram(f"🎯 Atingido TP2 ({tp2:.2f}) para {par.upper()}! SL agora ajustado para TP1 ({tp1:.2f})")
-                        estado["sl"] = tp1
-                        avisado_tp2 = True
+                    data = json.loads(message)
+                    preco_atual = float(data["c"])
+                    print(f"[MONITOR] Preço atual de {par.upper()}: {preco_atual}", flush=True)
 
-                    elif preco_atual >= tp1 and not avisado_tp1:
-                        notificar_telegram(f"🎯 Atingido TP1 ({tp1:.2f}) para {par.upper()}! SL agora ajustado para entrada ({entrada:.2f})")
-                        estado["sl"] = entrada
-                        avisado_tp1 = True
+                    tipo = estado["tipo"]
+                    entrada = estado["entrada"]
+                    tp1 = estado["tp1"]
+                    tp2 = estado["tp2"]
+                    tp3 = estado["tp3"]
+                    sl = estado["sl"]
+                    quantidade = estado["quantidade"]
 
-                    elif preco_atual <= estado["sl"] and not avisado_sl:
-                        notificar_telegram(f"🛑 STOP atingido ({estado['sl']:.2f}) para {par.upper()} 😓 Fechando operação.")
-                        fechar_posicao_real(par.upper(), tipo, quantidade)
-                        estado["em_operacao"] = False
-                        avisado_sl = True
+                    if tipo == "buy":
+                        if preco_atual >= tp3 and not avisado_tp3:
+                            notificar_telegram(f"🎯 Atingido TP3 ({tp3:.2f}) para {par.upper()}! 🤑 Fechando operação.")
+                            fechar_posicao_real(par.upper(), tipo, quantidade)
+                            estado["em_operacao"] = False
+                            avisado_tp3 = True
 
-                elif tipo == "sell":
-                    if preco_atual <= tp3 and not avisado_tp3:
-                        notificar_telegram(f"🎯 Atingido TP3 ({tp3:.2f}) para {par.upper()}! 🤑 Fechando operação.")
-                        fechar_posicao_real(par.upper(), tipo, quantidade)
-                        estado["em_operacao"] = False
-                        avisado_tp3 = True
+                        elif preco_atual >= tp2 and not avisado_tp2:
+                            notificar_telegram(f"🎯 Atingido TP2 ({tp2:.2f}) para {par.upper()}! SL ajustado para TP1 ({tp1:.2f})")
+                            estado["sl"] = tp1
+                            avisado_tp2 = True
 
-                    elif preco_atual <= tp2 and not avisado_tp2:
-                        notificar_telegram(f"🎯 Atingido TP2 ({tp2:.2f}) para {par.upper()}! SL agora ajustado para TP1 ({tp1:.2f})")
-                        estado["sl"] = tp1
-                        avisado_tp2 = True
+                        elif preco_atual >= tp1 and not avisado_tp1:
+                            notificar_telegram(f"🎯 Atingido TP1 ({tp1:.2f}) para {par.upper()}! SL ajustado para entrada ({entrada:.2f})")
+                            estado["sl"] = entrada
+                            avisado_tp1 = True
 
-                    elif preco_atual <= tp1 and not avisado_tp1:
-                        notificar_telegram(f"🎯 Atingido TP1 ({tp1:.2f}) para {par.upper()}! SL agora ajustado para entrada ({entrada:.2f})")
-                        estado["sl"] = entrada
-                        avisado_tp1 = True
+                        elif preco_atual <= estado["sl"] and not avisado_sl:
+                            notificar_telegram(f"🛑 STOP atingido ({estado['sl']:.2f}) para {par.upper()} 😓 Fechando operação.")
+                            fechar_posicao_real(par.upper(), tipo, quantidade)
+                            estado["em_operacao"] = False
+                            avisado_sl = True
 
-                    elif preco_atual >= estado["sl"] and not avisado_sl:
-                        notificar_telegram(f"🛑 STOP atingido ({estado['sl']:.2f}) para {par.upper()} 😓 Fechando operação.")
-                        fechar_posicao_real(par.upper(), tipo, quantidade)
-                        estado["em_operacao"] = False
-                        avisado_sl = True
+                    elif tipo == "sell":
+                        if preco_atual <= tp3 and not avisado_tp3:
+                            notificar_telegram(f"🎯 Atingido TP3 ({tp3:.2f}) para {par.upper()}! 🤑 Fechando operação.")
+                            fechar_posicao_real(par.upper(), tipo, quantidade)
+                            estado["em_operacao"] = False
+                            avisado_tp3 = True
+
+                        elif preco_atual <= tp2 and not avisado_tp2:
+                            notificar_telegram(f"🎯 Atingido TP2 ({tp2:.2f}) para {par.upper()}! SL ajustado para TP1 ({tp1:.2f})")
+                            estado["sl"] = tp1
+                            avisado_tp2 = True
+
+                        elif preco_atual <= tp1 and not avisado_tp1:
+                            notificar_telegram(f"🎯 Atingido TP1 ({tp1:.2f}) para {par.upper()}! SL ajustado para entrada ({entrada:.2f})")
+                            estado["sl"] = entrada
+                            avisado_tp1 = True
+
+                        elif preco_atual >= estado["sl"] and not avisado_sl:
+                            notificar_telegram(f"🛑 STOP atingido ({estado['sl']:.2f}) para {par.upper()} 😓 Fechando operação.")
+                            fechar_posicao_real(par.upper(), tipo, quantidade)
+                            estado["em_operacao"] = False
+                            avisado_sl = True
 
         except websockets.ConnectionClosed:
-            print("[WS] Conexão perdida. Reconectando...", flush=True)
-            continue
+            print("[WS] Conexão perdida. Tentando reconectar em 2s...", flush=True)
+            await asyncio.sleep(2)
         except Exception as e:
             print(f"[ERRO] Monitor WS: {e}", flush=True)
-            continue
+            await asyncio.sleep(2)
 
 # 🚀 Iniciar o monitoramento WebSocket
 
