@@ -27,7 +27,7 @@ estado = {
     "tipo": "",
     "quantidade": 0.0,
     "hora_ultima_checagem": time.time(),
-    "bot_ativo": True
+    "bot_ativo": True  # 🆕 Novo controle ON/OFF via Telegram
 }
 
 # 🔧 Cálculo de posição
@@ -55,59 +55,63 @@ def executar_ordem_real(par, tipo, quantidade):
 
 # 🧠 Processa sinal recebido
 def process_signal(data):
+    print("📥 Dados recebidos do sinal:")
+    print(data)
+
     if not estado["bot_ativo"]:
-        notificar_telegram("⚠️ Bot está DESATIVADO. Comando ignorado.")
-        return {"status": "inativo", "mensagem": "Bot desligado"}
+        print("🚫 Bot está desligado. Ignorando sinal.")
+        return {"status": "desligado", "mensagem": "Bot está desligado. Ignorando sinal."}
 
     if estado["em_operacao"]:
         notificar_telegram(f"""
 ⚠️ SINAL IGNORADO (Já em operação)
 
-📡 Novo sinal recebido, mas o bot está em operação.
+📡 Um novo sinal foi recebido, mas o bot está atualmente em operação.
 
 🔁 Sinal:
 • Par: {data.get('ativo')}
 • Tipo: {data.get('tipo').upper()}
 
-⏳ Aguarde o encerramento da operação atual.
+⏳ Aguarde o encerramento da operação atual para novos sinais serem processados.
 """.strip())
         return {"status": "em_operacao", "mensagem": "Sinal ignorado pois já está em operação"}
 
     # 📥 Dados do sinal
-    par = data.get("ativo", "BTCUSDT")
-    entrada = float(data.get("entrada", "0"))
-    tipo = data.get("tipo", "buy").lower()
-    tp1_percent = float(data.get("tp1_percent", "2"))
-    tp2_percent = float(data.get("tp2_percent", "4"))
-    tp3_percent = float(data.get("tp3_percent", "6"))
-    risco_percent = float(data.get("risco_percent", "2"))
+    try:
+        par = data.get("ativo", "BTCUSDT")
+        entrada = float(data.get("entrada", "0"))
+        tipo = data.get("tipo", "buy").lower()
+        tp1_percent = float(data.get("tp1_percent", "2"))
+        tp2_percent = float(data.get("tp2_percent", "4"))
+        tp3_percent = float(data.get("tp3_percent", "6"))
+        risco_percent = float(data.get("risco_percent", "2"))
 
-    # 🎯 Alvos e SL
-    tp1 = entrada * (1 + tp1_percent / 100) if tipo == "buy" else entrada * (1 - tp1_percent / 100)
-    tp2 = entrada * (1 + tp2_percent / 100) if tipo == "buy" else entrada * (1 - tp2_percent / 100)
-    tp3 = entrada * (1 + tp3_percent / 100) if tipo == "buy" else entrada * (1 - tp3_percent / 100)
-    sl = entrada * (1 - 0.03) if tipo == "buy" else entrada * (1 + 0.03)
+        print(f"🔢 Entrada convertida: {entrada}")
 
-    # ⚙️ Atualiza estado
-    quantidade = calcular_quantidade(par, entrada, risco_percent)
-    estado.update({
-        "em_operacao": True,
-        "par": par,
-        "entrada": entrada,
-        "tp1": tp1,
-        "tp2": tp2,
-        "tp3": tp3,
-        "sl": sl,
-        "tipo": tipo,
-        "quantidade": quantidade,
-        "hora_ultima_checagem": time.time()
-    })
+        # 🎯 Alvos e SL
+        tp1 = entrada * (1 + tp1_percent / 100) if tipo == "buy" else entrada * (1 - tp1_percent / 100)
+        tp2 = entrada * (1 + tp2_percent / 100) if tipo == "buy" else entrada * (1 - tp2_percent / 100)
+        tp3 = entrada * (1 + tp3_percent / 100) if tipo == "buy" else entrada * (1 - tp3_percent / 100)
+        sl = entrada * (1 - 0.03) if tipo == "buy" else entrada * (1 + 0.03)
 
-    # 🚀 Envia ordem
-    executar_ordem_real(par, tipo, quantidade)
+        quantidade = calcular_quantidade(par, entrada, risco_percent)
 
-    # 📢 Alerta entrada
-    msg = f"""
+        estado.update({
+            "em_operacao": True,
+            "par": par,
+            "entrada": entrada,
+            "tp1": tp1,
+            "tp2": tp2,
+            "tp3": tp3,
+            "sl": sl,
+            "tipo": tipo,
+            "quantidade": quantidade,
+            "hora_ultima_checagem": time.time()
+        })
+
+        executar_ordem_real(par, tipo, quantidade)
+
+        msg = f"""
 📈 NOVA OPERAÇÃO ({tipo.upper()})
 ────────────────────────────
 🪙 Par: {par}
@@ -119,18 +123,22 @@ def process_signal(data):
 ❌ SL: {round(sl, 2)}
 📦 Quantidade: {quantidade}
 """
-    notificar_telegram(msg.strip())
+        notificar_telegram(msg.strip())
 
-    # 📊 Inicia acompanhamento
-    threading.Thread(target=acompanhar_preco, args=(par, tipo, tp1, tp2, tp3, sl)).start()
-    return {"status": "ok", "mensagem": "Sinal processado"}
+        threading.Thread(target=acompanhar_preco, args=(par, tipo, tp1, tp2, tp3, sl)).start()
+        return {"status": "ok", "mensagem": "Sinal processado"}
+
+    except Exception as e:
+        notificar_telegram(f"❌ ERRO no processamento do sinal: {e}")
+        print(f"❌ ERRO no processamento do sinal: {e}")
+        return {"status": "erro", "mensagem": str(e)}
 
 # 👁️ Acompanhamento de operação
 def acompanhar_preco(par, tipo, tp1, tp2, tp3, sl):
     stop_movel = sl
     try:
         while True:
-            time.sleep(60)  # aumentado para evitar ban por excesso de requisição
+            time.sleep(30)
             preco_atual = binance.fetch_ticker(par)['last']
 
             if tipo == "buy":
