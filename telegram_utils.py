@@ -6,7 +6,8 @@ import random
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-# 📤 Envia mensagem com log
+# 📤 Envia mensagem com log formatado
+
 def notificar_telegram(mensagem: str):
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
         print("⚠️ Telegram não configurado corretamente.")
@@ -20,11 +21,13 @@ def notificar_telegram(mensagem: str):
 
     try:
         response = requests.post(url, json=payload)
-        print("📤 Mensagem enviada para Telegram:")
+        print("📤 [TELEGRAM] Mensagem enviada:")
+        print("────────────────────────────")
         print(mensagem)
-        print(f"📨 Status HTTP: {response.status_code} | Resposta: {response.text}")
+        print("────────────────────────────")
+        print(f"📨 Status: {response.status_code} | Resposta: {response.text}")
     except Exception as e:
-        print(f"❌ Erro ao enviar mensagem pro Telegram: {e}")
+        print(f"❌ ERRO ao enviar mensagem pro Telegram: {e}")
 
 # 💬 Frases de inatividade
 mensagens_parado = [
