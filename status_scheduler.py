@@ -2,7 +2,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 import time
 import ccxt
 from telegram_utils import notificar_telegram
-from bot_logic import estado
+import bot_logic
 
 # Conexão com Binance pública (consulta de preço)
 binance = ccxt.binance()
@@ -18,16 +18,17 @@ def checar_status():
     global avisado_tp1, avisado_tp2, avisado_tp3, avisado_sl
 
     try:
-        if not estado["em_operacao"]:
+        if not bot_logic.estado["em_operacao"]:
             return
 
-        par = estado["par"]
-        tipo = estado["tipo"]
-        entrada = estado["entrada"]
-        tp1 = estado["tp1"]
-        tp2 = estado["tp2"]
-        tp3 = estado["tp3"]
-        sl = estado["sl"]
+        par = bot_logic.estado["par"]
+        tipo = bot_logic.estado["tipo"]
+        entrada = bot_logic.estado["entrada"]
+        tp1 = bot_logic.estado["tp1"]
+        tp2 = bot_logic.estado["tp2"]
+        tp3 = bot_logic.estado["tp3"]
+        sl = bot_logic.estado["sl"]
+        quantidade = bot_logic.estado["quantidade"]
 
         ticker = binance.fetch_ticker(par.replace("/", ""))
         preco_atual = ticker['last']
@@ -37,43 +38,47 @@ def checar_status():
         if tipo == "buy":
             if preco_atual >= tp3 and not avisado_tp3:
                 notificar_telegram(f"🎯 Atingido TP3 ({tp3:.2f}) para {par}! 🤑 Fechando operação.")
-                estado["em_operacao"] = False
+                bot_logic.fechar_posicao_real(par, tipo, quantidade)
+                bot_logic.estado["em_operacao"] = False
                 avisado_tp3 = True
 
             elif preco_atual >= tp2 and not avisado_tp2:
                 notificar_telegram(f"🎯 Atingido TP2 ({tp2:.2f}) para {par}! SL agora ajustado para TP1 ({tp1:.2f})")
-                estado["sl"] = tp1
+                bot_logic.estado["sl"] = tp1
                 avisado_tp2 = True
 
             elif preco_atual >= tp1 and not avisado_tp1:
                 notificar_telegram(f"🎯 Atingido TP1 ({tp1:.2f}) para {par}! SL agora ajustado para entrada ({entrada:.2f})")
-                estado["sl"] = entrada
+                bot_logic.estado["sl"] = entrada
                 avisado_tp1 = True
 
-            elif preco_atual <= estado["sl"] and not avisado_sl:
-                notificar_telegram(f"🛑 STOP atingido ({estado['sl']:.2f}) para {par} 😓 Fechando operação.")
-                estado["em_operacao"] = False
+            elif preco_atual <= bot_logic.estado["sl"] and not avisado_sl:
+                notificar_telegram(f"🛑 STOP atingido ({bot_logic.estado['sl']:.2f}) para {par} 😓 Fechando operação.")
+                bot_logic.fechar_posicao_real(par, tipo, quantidade)
+                bot_logic.estado["em_operacao"] = False
                 avisado_sl = True
 
         elif tipo == "sell":
             if preco_atual <= tp3 and not avisado_tp3:
                 notificar_telegram(f"🎯 Atingido TP3 ({tp3:.2f}) para {par}! 🤑 Fechando operação.")
-                estado["em_operacao"] = False
+                bot_logic.fechar_posicao_real(par, tipo, quantidade)
+                bot_logic.estado["em_operacao"] = False
                 avisado_tp3 = True
 
             elif preco_atual <= tp2 and not avisado_tp2:
                 notificar_telegram(f"🎯 Atingido TP2 ({tp2:.2f}) para {par}! SL agora ajustado para TP1 ({tp1:.2f})")
-                estado["sl"] = tp1
+                bot_logic.estado["sl"] = tp1
                 avisado_tp2 = True
 
             elif preco_atual <= tp1 and not avisado_tp1:
                 notificar_telegram(f"🎯 Atingido TP1 ({tp1:.2f}) para {par}! SL agora ajustado para entrada ({entrada:.2f})")
-                estado["sl"] = entrada
+                bot_logic.estado["sl"] = entrada
                 avisado_tp1 = True
 
-            elif preco_atual >= estado["sl"] and not avisado_sl:
-                notificar_telegram(f"🛑 STOP atingido ({estado['sl']:.2f}) para {par} 😓 Fechando operação.")
-                estado["em_operacao"] = False
+            elif preco_atual >= bot_logic.estado["sl"] and not avisado_sl:
+                notificar_telegram(f"🛑 STOP atingido ({bot_logic.estado['sl']:.2f}) para {par} 😓 Fechando operação.")
+                bot_logic.fechar_posicao_real(par, tipo, quantidade)
+                bot_logic.estado["em_operacao"] = False
                 avisado_sl = True
 
     except Exception as e:
