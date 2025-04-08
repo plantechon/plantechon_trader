@@ -16,7 +16,6 @@ app = Flask(__name__)
 # 🌐 Webhook do TradingView
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    print("🔥 SINAL ACIONADO! (SEGUNDO BOT)", flush=True)
     if not estado["ativado"]:
         notificar_telegram("⚠️ Sinal recebido, mas o bot está DESLIGADO.")
         return {"status": "desligado", "mensagem": "Bot desligado"}
