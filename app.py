@@ -7,7 +7,7 @@ import requests
 from dotenv import load_dotenv
 load_dotenv()
 
-from bot_logic import process_signal, iniciar_monitoramento, estado
+from bot_logic import process_signal, estado  # ✅ Removido iniciar_monitoramento
 from telegram_utils import notificar_telegram
 from status_scheduler import iniciar_agendador
 
@@ -19,18 +19,17 @@ def webhook():
     if not estado["ativado"]:
         notificar_telegram("⚠️ Sinal recebido, mas o bot está DESLIGADO.")
         return {"status": "desligado", "mensagem": "Bot desligado"}
-    
+
     data = request.json
     result = process_signal(data)
     return result
 
-# ✅ Inicializa monitoramento e agendador
-iniciar_monitoramento()
+# ✅ Inicializa agendador (e monitoramento se for adicionado no futuro)
 iniciar_agendador()
 
 # 📡 Bot de comandos do Telegram
 def verificar_comandos_telegram():
-    print("🤖 Monitorando comandos do Telegram...")
+    print("[MONITOR] Monitorando comandos do Telegram...")
 
     token = os.getenv("TELEGRAM_TOKEN")
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
@@ -62,13 +61,14 @@ def verificar_comandos_telegram():
                     operando = f"⏳ Operando {estado['par']}" if estado["em_operacao"] else "📭 Sem operação no momento"
                     notificar_telegram(f"📊 Status do Bot:\nStatus: {status}\n{operando}")
         except Exception as e:
-            print(f"Erro ao verificar comandos: {e}")
-        
-        time.sleep(5)  # Verifica a cada 5 segundos
+            print(f"[ERRO] Falha ao verificar comandos do Telegram: {e}")
+
+        time.sleep(5)
 
 # ▶️ Inicia o monitoramento de comandos em thread separada
 threading.Thread(target=verificar_comandos_telegram).start()
 
-# 🚀 Inicia servidor Flask
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+# 🚀 Inicialização
+if __name__ == '__main__':
+    print("[APP] Bot Flask rodando...")
+    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
