@@ -4,14 +4,13 @@ import threading
 import ccxt
 from telegram_utils import notificar_telegram
 
-# 🔐 Conexão com Binance Futuros
+# 🔐 Conexão com Binance Futuros (REMOVIDO positionSide para evitar erro -4061)
 binance = ccxt.binance({
     'apiKey': os.getenv("BINANCE_API_KEY"),
     'secret': os.getenv("BINANCE_API_SECRET"),
     'enableRateLimit': True,
     'options': {
-        'defaultType': 'future',
-        'positionSide': 'BOTH'
+        'defaultType': 'future'
     }
 })
 
@@ -40,27 +39,27 @@ def calcular_quantidade(ativo, preco_entrada, risco_percent=2, alavancagem=5):
 # ✅ Executa ordem real
 def executar_ordem_real(par, tipo, quantidade):
     try:
-        print("[EXECUÇÃO] Enviando ordem real...")
-        print(f"Par: {par} | Tipo: {tipo.upper()} | Quantidade: {quantidade}")
+        print("[EXECUÇÃO] Enviando ordem real...", flush=True)
+        print(f"Par: {par} | Tipo: {tipo.upper()} | Quantidade: {quantidade}", flush=True)
         if tipo == "buy":
             ordem = binance.create_market_buy_order(par, quantidade)
         else:
             ordem = binance.create_market_sell_order(par, quantidade)
         notificar_telegram(f"✅ ORDEM REAL ENVIADA\nPar: {par}\nTipo: {tipo.upper()}\nQtd: {quantidade}")
-        print("[EXECUÇÃO] Ordem enviada com sucesso!")
+        print("[EXECUÇÃO] Ordem enviada com sucesso!", flush=True)
         return ordem
     except Exception as e:
         notificar_telegram(f"❌ ERRO ao enviar ordem: {e}")
-        print(f"[ERRO] Falha ao enviar ordem: {e}")
+        print(f"[ERRO] Falha ao enviar ordem: {e}", flush=True)
         return None
 
 # 🧠 Processa sinal recebido
 def process_signal(data):
     print("[SINAL] Sinal recebido:")
-    print(data)
+    print(data, flush=True)
 
     if not estado.get("ativado"):
-        print("[STATUS] Bot desativado. Ignorando sinal.")
+        print("[STATUS] Bot desativado. Ignorando sinal.", flush=True)
         return {"status": "desativado", "mensagem": "Bot desativado"}
 
     if estado["em_operacao"]:
@@ -71,7 +70,7 @@ def process_signal(data):
             f"Tipo: {data.get('tipo').upper()}\n"
             f"⏳ Aguarde o fim da operação atual."
         )
-        print("[SINAL] Ignorado: já em operação.")
+        print("[SINAL] Ignorado: já em operação.", flush=True)
         return {"status": "em_operacao", "mensagem": "Sinal ignorado pois já está em operação"}
 
     # Dados do sinal
@@ -98,11 +97,11 @@ def process_signal(data):
             "quantidade": quantidade
         })
 
-        print("[ORDEM] Par: {} | Entrada: {} | Quantidade: {}".format(par, entrada, quantidade))
+        print("[ORDEM] Par: {} | Entrada: {} | Quantidade: {}".format(par, entrada, quantidade), flush=True)
         executar_ordem_real(par, tipo, quantidade)
 
         return {"status": "executado", "mensagem": "Sinal processado e ordem executada"}
     except Exception as e:
-        print(f"[ERRO] Problema ao processar sinal: {e}")
+        print(f"[ERRO] Problema ao processar sinal: {e}", flush=True)
         notificar_telegram(f"❌ Erro ao processar sinal: {e}")
         return {"status": "erro", "mensagem": str(e)}
