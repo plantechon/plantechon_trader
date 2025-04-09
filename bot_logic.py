@@ -1,8 +1,10 @@
 import os
 import time
 import ccxt
+from datetime import datetime
 from telegram_utils import notificar_telegram
 
+# 🔐 Conexão com Binance Futuros (modo hedge compatível)
 binance = ccxt.binance({
     'apiKey': os.getenv("BINANCE_API_KEY"),
     'secret': os.getenv("BINANCE_API_SECRET"),
@@ -12,6 +14,7 @@ binance = ccxt.binance({
     }
 })
 
+# 🔁 Estado de operação
 estado = {
     "em_operacao": False,
     "par": "",
@@ -23,15 +26,18 @@ estado = {
     "tipo": "",
     "quantidade": 0.0,
     "hora_ultima_checagem": time.time(),
-    "ativado": True
+    "ativado": True,
+    "timeframe": ""
 }
 
+# 🔧 Cálculo de posição
 def calcular_quantidade(ativo, preco_entrada, risco_percent=2, alavancagem=5):
     saldo = 50
     valor_total = saldo * alavancagem
     quantidade = valor_total / float(preco_entrada)
     return round(quantidade, 3)
 
+# ✅ Executa ordem real com suporte ao modo HEDGE
 def executar_ordem_real(par, tipo, quantidade, tentativas=3):
     for tentativa in range(1, tentativas + 1):
         try:
@@ -69,6 +75,7 @@ def executar_ordem_real(par, tipo, quantidade, tentativas=3):
     print("[ERRO] Falha definitiva ao enviar ordem após várias tentativas.", flush=True)
     return None
 
+# ❌ Fecha posição real
 def fechar_posicao_real(par, tipo, quantidade):
     try:
         lado_oposto = "sell" if tipo == "buy" else "buy"
@@ -93,19 +100,14 @@ def fechar_posicao_real(par, tipo, quantidade):
         print(f"[ERRO] Falha ao fechar posição: {e}", flush=True)
         return None
 
+# 🧠 Processa sinal recebido
 def process_signal(data):
     print("[SINAL] Sinal recebido:")
     print(data, flush=True)
 
     if not estado.get("ativado"):
+        print("[STATUS] Bot desativado. Ignorando sinal.", flush=True)
         return {"status": "desativado", "mensagem": "Bot desativado"}
-
-    # 🔄 Liberação automática se passou mais de 5 minutos
-    tempo_atual = time.time()
-    if estado["em_operacao"] and tempo_atual - estado["hora_ultima_checagem"] > 300:
-        print("[AUTO-LIBERAÇÃO] Mais de 5 minutos sem nova operação. Resetando estado...", flush=True)
-        notificar_telegram("⏱ Mais de 5 minutos sem operação. Estado resetado automaticamente.")
-        estado["em_operacao"] = False
 
     if estado["em_operacao"]:
         notificar_telegram(
@@ -115,6 +117,7 @@ def process_signal(data):
             f"Tipo: {data.get('tipo').upper()}\n"
             f"⏳ Aguarde o fim da operação atual."
         )
+        print("[SINAL] Ignorado: já em operação.", flush=True)
         return {"status": "em_operacao", "mensagem": "Sinal ignorado pois já está em operação"}
 
     try:
@@ -122,6 +125,8 @@ def process_signal(data):
         entrada = float(data["entrada"])
         tipo = data["tipo"].lower()
         risco_percent = float(data.get("risco_percent", 2))
+        timeframe = data.get("timeframe", "1h")
+
         tp1 = entrada * (1 + float(data.get("tp1_percent", 2)) / 100) if tipo == "buy" else entrada * (1 - float(data.get("tp1_percent", 2)) / 100)
         tp2 = entrada * (1 + float(data.get("tp2_percent", 4)) / 100) if tipo == "buy" else entrada * (1 - float(data.get("tp2_percent", 4)) / 100)
         tp3 = entrada * (1 + float(data.get("tp3_percent", 6)) / 100) if tipo == "buy" else entrada * (1 - float(data.get("tp3_percent", 6)) / 100)
@@ -138,11 +143,28 @@ def process_signal(data):
             "sl": sl,
             "tipo": tipo,
             "quantidade": quantidade,
-            "hora_ultima_checagem": tempo_atual
+            "timeframe": timeframe
         })
 
-        print(f"[ORDEM] Par: {par} | Entrada: {entrada} | Quantidade: {quantidade}", flush=True)
+        agora = datetime.now().strftime("%H:%M:%S %d/%m/%Y")
+
+        notificar_telegram(
+            f"🧾 *Resumo da Nova Operação*\n\n"
+            f"📌 Par: {par}\n"
+            f"🕐 Timeframe: {timeframe}\n"
+            f"📈 Tipo: {tipo.upper()}\n"
+            f"🎯 Entrada: {entrada:.2f}\n"
+            f"🎯 TP1: {tp1:.2f}\n"
+            f"🎯 TP2: {tp2:.2f}\n"
+            f"🎯 TP3: {tp3:.2f}\n"
+            f"🛑 SL: {sl:.2f}\n"
+            f"📦 Quantidade: {quantidade}\n"
+            f"🕒 Horário: {agora}"
+        )
+
+        print("[ORDEM] Par: {} | Entrada: {} | Quantidade: {}".format(par, entrada, quantidade), flush=True)
         executar_ordem_real(par, tipo, quantidade)
+
         return {"status": "executado", "mensagem": "Sinal processado e ordem executada"}
 
     except Exception as e:
