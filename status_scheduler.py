@@ -1,6 +1,7 @@
 import asyncio
 import ccxt
 import json
+import time
 import websockets
 from telegram_utils import notificar_telegram
 from bot_logic import estado, fechar_posicao_real
@@ -11,10 +12,9 @@ avisado_tp1 = False
 avisado_tp2 = False
 avisado_tp3 = False
 avisado_sl = False
-par_em_monitoramento = ""
 
 async def monitorar_via_websocket():
-    global avisado_tp1, avisado_tp2, avisado_tp3, avisado_sl, par_em_monitoramento
+    global avisado_tp1, avisado_tp2, avisado_tp3, avisado_sl
 
     while True:
         try:
@@ -23,13 +23,6 @@ async def monitorar_via_websocket():
                 continue
 
             par = estado["par"].lower().replace("/", "")
-
-            # Se mudamos de ativo, resetamos os avisos
-            if par != par_em_monitoramento:
-                avisado_tp1 = avisado_tp2 = avisado_tp3 = avisado_sl = False
-                par_em_monitoramento = par
-                print(f"🆕 Nova operação detectada! Resetando flags para {par.upper()}", flush=True)
-
             url = f"wss://stream.binance.com:9443/ws/{par}@ticker"
 
             async with websockets.connect(url) as websocket:
@@ -37,10 +30,11 @@ async def monitorar_via_websocket():
 
                 async for message in websocket:
                     if not estado["em_operacao"]:
-                        break
+                        continue
 
                     data = json.loads(message)
                     preco_atual = float(data["c"])
+                    estado["hora_ultima_checagem"] = time.time()  # Atualiza relógio interno
                     print(f"[MONITOR] Preço atual de {par.upper()}: {preco_atual}", flush=True)
 
                     tipo = estado["tipo"]
@@ -97,6 +91,14 @@ async def monitorar_via_websocket():
                             estado["em_operacao"] = False
                             avisado_sl = True
 
+                    # ⏰ Verificação de operação travada (timeout)
+                    tempo_inativo = time.time() - estado["hora_ultima_checagem"]
+                    if tempo_inativo > 300:
+                        notificar_telegram("⚠️ Operação travada há mais de 5 minutos. Resetando automaticamente.")
+                        estado["em_operacao"] = False
+                        avisado_tp1 = avisado_tp2 = avisado_tp3 = avisado_sl = False
+                        print("[RESET] Estado resetado automaticamente por inatividade.", flush=True)
+
         except websockets.ConnectionClosed:
             print("[WS] Conexão perdida. Tentando reconectar em 2s...", flush=True)
             await asyncio.sleep(2)
@@ -104,9 +106,13 @@ async def monitorar_via_websocket():
             print(f"[ERRO] Monitor WS: {e}", flush=True)
             await asyncio.sleep(2)
 
-# 🚀 Inicializador
+# 🚀 Iniciar o monitoramento WebSocket
+
 def iniciar_agendador():
+    global avisado_tp1, avisado_tp2, avisado_tp3, avisado_sl
+    avisado_tp1 = avisado_tp2 = avisado_tp3 = avisado_sl = False
     print("🟢 Monitoramento via WebSocket iniciado", flush=True)
+
     try:
         loop = asyncio.get_event_loop()
         loop.create_task(monitorar_via_websocket())
