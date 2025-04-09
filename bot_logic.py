@@ -3,7 +3,6 @@ import time
 import ccxt
 from telegram_utils import notificar_telegram
 
-# 🔐 Conexão com Binance Futuros (modo hedge compatível)
 binance = ccxt.binance({
     'apiKey': os.getenv("BINANCE_API_KEY"),
     'secret': os.getenv("BINANCE_API_SECRET"),
@@ -13,7 +12,6 @@ binance = ccxt.binance({
     }
 })
 
-# 🔁 Estado de operação
 estado = {
     "em_operacao": False,
     "par": "",
@@ -28,14 +26,12 @@ estado = {
     "ativado": True
 }
 
-# 🔧 Cálculo de posição
 def calcular_quantidade(ativo, preco_entrada, risco_percent=2, alavancagem=5):
     saldo = 50
     valor_total = saldo * alavancagem
     quantidade = valor_total / float(preco_entrada)
     return round(quantidade, 3)
 
-# ✅ Executa ordem real com suporte ao modo HEDGE
 def executar_ordem_real(par, tipo, quantidade, tentativas=3):
     for tentativa in range(1, tentativas + 1):
         try:
@@ -73,7 +69,6 @@ def executar_ordem_real(par, tipo, quantidade, tentativas=3):
     print("[ERRO] Falha definitiva ao enviar ordem após várias tentativas.", flush=True)
     return None
 
-# ❌ Fechar posição real (função chamada quando atinge o stop ou TP3)
 def fechar_posicao_real(par, tipo, quantidade):
     try:
         lado_oposto = "sell" if tipo == "buy" else "buy"
@@ -98,14 +93,19 @@ def fechar_posicao_real(par, tipo, quantidade):
         print(f"[ERRO] Falha ao fechar posição: {e}", flush=True)
         return None
 
-# 🧐 Processa sinal recebido
 def process_signal(data):
     print("[SINAL] Sinal recebido:")
     print(data, flush=True)
 
     if not estado.get("ativado"):
-        print("[STATUS] Bot desativado. Ignorando sinal.", flush=True)
         return {"status": "desativado", "mensagem": "Bot desativado"}
+
+    # 🔄 Liberação automática se passou mais de 5 minutos
+    tempo_atual = time.time()
+    if estado["em_operacao"] and tempo_atual - estado["hora_ultima_checagem"] > 300:
+        print("[AUTO-LIBERAÇÃO] Mais de 5 minutos sem nova operação. Resetando estado...", flush=True)
+        notificar_telegram("⏱ Mais de 5 minutos sem operação. Estado resetado automaticamente.")
+        estado["em_operacao"] = False
 
     if estado["em_operacao"]:
         notificar_telegram(
@@ -115,7 +115,6 @@ def process_signal(data):
             f"Tipo: {data.get('tipo').upper()}\n"
             f"⏳ Aguarde o fim da operação atual."
         )
-        print("[SINAL] Ignorado: já em operação.", flush=True)
         return {"status": "em_operacao", "mensagem": "Sinal ignorado pois já está em operação"}
 
     try:
@@ -138,12 +137,12 @@ def process_signal(data):
             "tp3": tp3,
             "sl": sl,
             "tipo": tipo,
-            "quantidade": quantidade
+            "quantidade": quantidade,
+            "hora_ultima_checagem": tempo_atual
         })
 
-        print("[ORDEM] Par: {} | Entrada: {} | Quantidade: {}".format(par, entrada, quantidade), flush=True)
+        print(f"[ORDEM] Par: {par} | Entrada: {entrada} | Quantidade: {quantidade}", flush=True)
         executar_ordem_real(par, tipo, quantidade)
-
         return {"status": "executado", "mensagem": "Sinal processado e ordem executada"}
 
     except Exception as e:
