@@ -11,9 +11,10 @@ avisado_tp1 = False
 avisado_tp2 = False
 avisado_tp3 = False
 avisado_sl = False
+par_em_monitoramento = ""
 
 async def monitorar_via_websocket():
-    global avisado_tp1, avisado_tp2, avisado_tp3, avisado_sl
+    global avisado_tp1, avisado_tp2, avisado_tp3, avisado_sl, par_em_monitoramento
 
     while True:
         try:
@@ -22,6 +23,13 @@ async def monitorar_via_websocket():
                 continue
 
             par = estado["par"].lower().replace("/", "")
+
+            # Se mudamos de ativo, resetamos os avisos
+            if par != par_em_monitoramento:
+                avisado_tp1 = avisado_tp2 = avisado_tp3 = avisado_sl = False
+                par_em_monitoramento = par
+                print(f"🆕 Nova operação detectada! Resetando flags para {par.upper()}", flush=True)
+
             url = f"wss://stream.binance.com:9443/ws/{par}@ticker"
 
             async with websockets.connect(url) as websocket:
@@ -29,7 +37,7 @@ async def monitorar_via_websocket():
 
                 async for message in websocket:
                     if not estado["em_operacao"]:
-                        continue
+                        break
 
                     data = json.loads(message)
                     preco_atual = float(data["c"])
@@ -96,13 +104,9 @@ async def monitorar_via_websocket():
             print(f"[ERRO] Monitor WS: {e}", flush=True)
             await asyncio.sleep(2)
 
-# 🚀 Iniciar o monitoramento WebSocket
-
+# 🚀 Inicializador
 def iniciar_agendador():
-    global avisado_tp1, avisado_tp2, avisado_tp3, avisado_sl
-    avisado_tp1 = avisado_tp2 = avisado_tp3 = avisado_sl = False
     print("🟢 Monitoramento via WebSocket iniciado", flush=True)
-
     try:
         loop = asyncio.get_event_loop()
         loop.create_task(monitorar_via_websocket())
