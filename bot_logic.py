@@ -1,7 +1,6 @@
 import os
 import time
 import ccxt
-from datetime import datetime
 from telegram_utils import notificar_telegram
 
 # 🔐 Conexão com Binance Futuros (modo hedge compatível)
@@ -26,8 +25,7 @@ estado = {
     "tipo": "",
     "quantidade": 0.0,
     "hora_ultima_checagem": time.time(),
-    "ativado": True,
-    "timeframe": ""
+    "ativado": True
 }
 
 # 🔧 Cálculo de posição
@@ -37,7 +35,19 @@ def calcular_quantidade(ativo, preco_entrada, risco_percent=2, alavancagem=5):
     quantidade = valor_total / float(preco_entrada)
     return round(quantidade, 3)
 
-# ✅ Executa ordem real com suporte ao modo HEDGE
+# 📊 Verifica se há posição real na Binance Futures
+def ha_posicao_aberta(par):
+    try:
+        posicoes = binance.fapiPrivateGetPositionRisk()
+        for p in posicoes:
+            if p["symbol"] == par.replace("/", "") and abs(float(p["positionAmt"])) > 0:
+                return True
+        return False
+    except Exception as e:
+        print(f"[ERRO] Verificação de posição: {e}", flush=True)
+        return estado["em_operacao"]  # fallback conservador
+
+# ✅ Executa ordem real
 def executar_ordem_real(par, tipo, quantidade, tentativas=3):
     for tentativa in range(1, tentativas + 1):
         try:
@@ -109,63 +119,47 @@ def process_signal(data):
         print("[STATUS] Bot desativado. Ignorando sinal.", flush=True)
         return {"status": "desativado", "mensagem": "Bot desativado"}
 
+    par = data.get("ativo", "")
+    tipo = data.get("tipo", "buy").lower()
+
+    # 🚫 Verificação real de posição na Binance
     if estado["em_operacao"]:
-        notificar_telegram(
-            f"⚠️ SINAL IGNORADO (Já em operação)\n"
-            f"📱 Novo sinal recebido:\n"
-            f"Par: {data.get('ativo')}\n"
-            f"Tipo: {data.get('tipo').upper()}\n"
-            f"⏳ Aguarde o fim da operação atual."
-        )
-        print("[SINAL] Ignorado: já em operação.", flush=True)
-        return {"status": "em_operacao", "mensagem": "Sinal ignorado pois já está em operação"}
+        if not ha_posicao_aberta(par):
+            print("[VERIFICAÇÃO] Nenhuma posição real aberta encontrada. Resetando estado.", flush=True)
+            estado["em_operacao"] = False
+        else:
+            notificar_telegram(
+                f"⚠️ SINAL IGNORADO (Já em operação)\n📱 Par: {par}\nTipo: {tipo.upper()}"
+            )
+            return {"status": "em_operacao", "mensagem": "Sinal ignorado pois já está em operação"}
 
     try:
-        par = data["ativo"]
         entrada = float(data["entrada"])
-        tipo = data["tipo"].lower()
         risco_percent = float(data.get("risco_percent", 2))
-        timeframe = data.get("timeframe", "1h")
-
         tp1 = entrada * (1 + float(data.get("tp1_percent", 2)) / 100) if tipo == "buy" else entrada * (1 - float(data.get("tp1_percent", 2)) / 100)
         tp2 = entrada * (1 + float(data.get("tp2_percent", 4)) / 100) if tipo == "buy" else entrada * (1 - float(data.get("tp2_percent", 4)) / 100)
         tp3 = entrada * (1 + float(data.get("tp3_percent", 6)) / 100) if tipo == "buy" else entrada * (1 - float(data.get("tp3_percent", 6)) / 100)
         sl = entrada * (1 - 0.01) if tipo == "buy" else entrada * (1 + 0.01)
         quantidade = calcular_quantidade(par, entrada, risco_percent)
 
-        estado.update({
-            "em_operacao": True,
-            "par": par,
-            "entrada": entrada,
-            "tp1": tp1,
-            "tp2": tp2,
-            "tp3": tp3,
-            "sl": sl,
-            "tipo": tipo,
-            "quantidade": quantidade,
-            "timeframe": timeframe
-        })
-
-        agora = datetime.now().strftime("%H:%M:%S %d/%m/%Y")
-
-        notificar_telegram(
-            f"🧾 *Resumo da Nova Operação*\n\n"
-            f"📌 Par: {par}\n"
-            f"🕐 Timeframe: {timeframe}\n"
-            f"📈 Tipo: {tipo.upper()}\n"
-            f"🎯 Entrada: {entrada:.2f}\n"
-            f"🎯 TP1: {tp1:.2f}\n"
-            f"🎯 TP2: {tp2:.2f}\n"
-            f"🎯 TP3: {tp3:.2f}\n"
-            f"🛑 SL: {sl:.2f}\n"
-            f"📦 Quantidade: {quantidade}\n"
-            f"🕒 Horário: {agora}"
-        )
-
         print("[ORDEM] Par: {} | Entrada: {} | Quantidade: {}".format(par, entrada, quantidade), flush=True)
-        executar_ordem_real(par, tipo, quantidade)
 
-        return {"status": "executado", "mensagem": "Sinal processado e ordem executada"}
+        resultado = executar_ordem_real(par, tipo, quantidade)
+        if resultado:
+            estado.update({
+                "em_operacao": True,
+                "par": par,
+                "entrada": entrada,
+                "tp1": tp1,
+                "tp2": tp2,
+                "tp3": tp3,
+                "sl": sl,
+                "tipo": tipo,
+                "quantidade": quantidade
+            })
+            return {"status": "executado", "mensagem": "Sinal processado e ordem executada"}
+        else:
+            return {"status": "falha", "mensagem": "Ordem não foi executada"}
 
     except Exception as e:
         print(f"[ERRO] Problema ao processar sinal: {e}", flush=True)
