@@ -47,12 +47,18 @@ async def monitorar_via_websocket():
 
                     # 📉 Atualiza SL com trailing stop
                     atualizar_trailing_stop(preco_atual)
-
                     hora = datetime.now().strftime("%H:%M:%S")
+
+                    def calcular_resultado(preco_saida):
+                        if tipo == "buy":
+                            return (preco_saida - entrada) * quantidade
+                        else:
+                            return (entrada - preco_saida) * quantidade
 
                     if tipo == "buy":
                         if preco_atual >= tp3 and not avisado_tp3:
-                            notificar_telegram(f"🎯 TP3 atingido ({tp3:.2f}) às {hora} | {par.upper()} | Fechando operação.")
+                            lucro = calcular_resultado(tp3)
+                            notificar_telegram(f"🎯 TP3 atingido ({tp3:.2f}) às {hora} | {par.upper()} | Fechando operação com lucro: +{lucro:.2f} USDT")
                             fechar_posicao_real(par.upper(), tipo, quantidade)
                             estado["em_operacao"] = False
                             avisado_tp3 = True
@@ -68,14 +74,16 @@ async def monitorar_via_websocket():
                             avisado_tp1 = True
 
                         elif preco_atual <= estado["sl"] and not avisado_sl:
-                            notificar_telegram(f"🛑 STOP atingido ({estado['sl']:.2f}) às {hora} | {par.upper()} | Fechando operação.")
+                            prejuizo = calcular_resultado(estado['sl'])
+                            notificar_telegram(f"🛑 STOP atingido ({estado['sl']:.2f}) às {hora} | {par.upper()} | Prejuízo: {prejuizo:.2f} USDT | Fechando operação.")
                             fechar_posicao_real(par.upper(), tipo, quantidade)
                             estado["em_operacao"] = False
                             avisado_sl = True
 
                     elif tipo == "sell":
                         if preco_atual <= tp3 and not avisado_tp3:
-                            notificar_telegram(f"🎯 TP3 atingido ({tp3:.2f}) às {hora} | {par.upper()} | Fechando operação.")
+                            lucro = calcular_resultado(tp3)
+                            notificar_telegram(f"🎯 TP3 atingido ({tp3:.2f}) às {hora} | {par.upper()} | Fechando operação com lucro: +{lucro:.2f} USDT")
                             fechar_posicao_real(par.upper(), tipo, quantidade)
                             estado["em_operacao"] = False
                             avisado_tp3 = True
@@ -91,7 +99,8 @@ async def monitorar_via_websocket():
                             avisado_tp1 = True
 
                         elif preco_atual >= estado["sl"] and not avisado_sl:
-                            notificar_telegram(f"🛑 STOP atingido ({estado['sl']:.2f}) às {hora} | {par.upper()} | Fechando operação.")
+                            prejuizo = calcular_resultado(estado['sl'])
+                            notificar_telegram(f"🛑 STOP atingido ({estado['sl']:.2f}) às {hora} | {par.upper()} | Prejuízo: {prejuizo:.2f} USDT | Fechando operação.")
                             fechar_posicao_real(par.upper(), tipo, quantidade)
                             estado["em_operacao"] = False
                             avisado_sl = True

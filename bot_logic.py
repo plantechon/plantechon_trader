@@ -47,7 +47,6 @@ def verificar_posicao_ativa(par, tipo, tentativas=3):
             time.sleep(2)
             balance = binance.fetch_balance({'type': 'future'})
             positions = balance.get('info', {}).get('positions', [])
-
             for pos in positions:
                 if pos['symbol'] == symbol:
                     amt = float(pos.get('positionAmt', 0))
@@ -63,10 +62,8 @@ def executar_ordem_real(par, tipo, quantidade, tentativas=3):
         try:
             print(f"[EXECUÇÃO] Tentativa {tentativa} - Enviando ordem real...", flush=True)
             print(f"Par: {par} | Tipo: {tipo.upper()} | Quantidade: {quantidade}", flush=True)
-
             side = "buy" if tipo == "buy" else "sell"
             position_side = "LONG" if tipo == "buy" else "SHORT"
-
             binance.create_order(
                 symbol=par,
                 type="market",
@@ -74,7 +71,6 @@ def executar_ordem_real(par, tipo, quantidade, tentativas=3):
                 amount=quantidade,
                 params={"positionSide": position_side}
             )
-
             time.sleep(2)
             if verificar_posicao_ativa(par, tipo):
                 print("[EXECUÇÃO] Ordem enviada com sucesso!", flush=True)
@@ -91,7 +87,6 @@ def fechar_posicao_real(par, tipo, quantidade):
     try:
         side = "sell" if tipo == "buy" else "buy"
         position_side = "LONG" if tipo == "buy" else "SHORT"
-
         binance.create_order(
             symbol=par,
             type="market",
@@ -107,10 +102,8 @@ def fechar_posicao_real(par, tipo, quantidade):
 def atualizar_trailing_stop(preco_atual):
     if not estado["trailing_ativo"]:
         return
-
     tipo = estado["tipo"]
     offset = estado["trailing_offset"]
-
     if tipo == "buy":
         novo_sl = preco_atual - offset
         if novo_sl > estado["sl"]:
