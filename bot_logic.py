@@ -131,6 +131,26 @@ def process_signal(data):
         timeframe = data.get("timeframe", "")
         trailing_offset = float(data.get("trailing_offset", 0))
 
+        tp1_calc = entrada * (1 + tp1_percent/100) if tipo == "buy" else entrada * (1 - tp1_percent/100)
+        tp2_calc = entrada * (1 + tp2_percent/100) if tipo == "buy" else entrada * (1 - tp2_percent/100)
+        tp3_calc = entrada * (1 + tp3_percent/100) if tipo == "buy" else entrada * (1 - tp3_percent/100)
+        sl_calc = entrada * (1 - risco_percent/100) if tipo == "buy" else entrada * (1 + risco_percent/100)
+
+        if estado["em_operacao"]:
+            hora = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+            emoji = "🟢" if tipo == "buy" else "🔴"
+            notificar_telegram(
+                f"⚠️ Novo sinal ignorado: o bot já está com uma operação ativa.\n\n"
+                f"🪙 Ativo recebido: {ativo}\n"
+                f"{emoji} Tipo: {'COMPRA' if tipo == 'buy' else 'VENDA'}\n"
+                f"💰 Entrada: {entrada:.2f}\n"
+                f"🎯 TP1: {tp1_calc:.2f} | TP2: {tp2_calc:.2f} | TP3: {tp3_calc:.2f}\n"
+                f"🛑 SL: {sl_calc:.2f}\n"
+                f"🕒 Timeframe: {timeframe.upper()}\n"
+                f"📅 Horário do sinal: {hora}"
+            )
+            return {"status": "ignorado", "mensagem": "Operação ativa em andamento."}
+
         quantidade = calcular_quantidade(ativo, entrada, risco_percent)
         print(f"[ORDEM] Par: {ativo} | Entrada: {entrada} | Quantidade: {quantidade}")
 
@@ -138,10 +158,10 @@ def process_signal(data):
             "em_operacao": True,
             "par": ativo,
             "entrada": entrada,
-            "tp1": entrada * (1 + tp1_percent/100) if tipo == "buy" else entrada * (1 - tp1_percent/100),
-            "tp2": entrada * (1 + tp2_percent/100) if tipo == "buy" else entrada * (1 - tp2_percent/100),
-            "tp3": entrada * (1 + tp3_percent/100) if tipo == "buy" else entrada * (1 - tp3_percent/100),
-            "sl": entrada * (1 - risco_percent/100) if tipo == "buy" else entrada * (1 + risco_percent/100),
+            "tp1": tp1_calc,
+            "tp2": tp2_calc,
+            "tp3": tp3_calc,
+            "sl": sl_calc,
             "tipo": tipo,
             "quantidade": quantidade,
             "hora_ultima_checagem": time.time(),
@@ -158,10 +178,10 @@ def process_signal(data):
             f"🪙 Ativo: {ativo}\n"
             f"{emoji} Tipo: {'COMPRA' if tipo == 'buy' else 'VENDA'}\n"
             f"💰 Entrada: {entrada:.2f}\n"
-            f"🎯 TP1: 🎯 {estado['tp1']:.2f}\n"
-            f"🎯 TP2: 🎯 {estado['tp2']:.2f}\n"
-            f"🎯 TP3: 🎯 {estado['tp3']:.2f}\n"
-            f"🛑 Stop Loss: {estado['sl']:.2f}\n"
+            f"🎯 TP1: 🎯 {tp1_calc:.2f}\n"
+            f"🎯 TP2: 🎯 {tp2_calc:.2f}\n"
+            f"🎯 TP3: 🎯 {tp3_calc:.2f}\n"
+            f"🛑 Stop Loss: {sl_calc:.2f}\n"
             f"📉 Trailing: {trailing_offset if trailing_offset > 0 else 'Desativado'}\n"
             f"🕒 Timeframe: {timeframe.upper()}\n"
             f"📅 Horário: {hora}"
