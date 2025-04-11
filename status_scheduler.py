@@ -3,9 +3,10 @@ import ccxt
 import json
 import websockets
 from telegram_utils import notificar_telegram
-from bot_logic import estado, fechar_posicao_real
+from bot_logic import estado, fechar_posicao_real, atualizar_trailing_stop
 import threading
 import time
+from datetime import datetime
 
 # Flags para alertas únicos
 avisado_tp1 = False
@@ -44,70 +45,62 @@ async def monitorar_via_websocket():
                     sl = estado["sl"]
                     quantidade = estado["quantidade"]
 
+                    # 📉 Atualiza SL com trailing stop
+                    atualizar_trailing_stop(preco_atual)
+
+                    hora = datetime.now().strftime("%H:%M:%S")
+
                     if tipo == "buy":
                         if preco_atual >= tp3 and not avisado_tp3:
-                            notificar_telegram(f"🎯 TP3 atingido ({tp3:.2f}) | {par.upper()} | Fechando operação.")
+                            notificar_telegram(f"🎯 TP3 atingido ({tp3:.2f}) às {hora} | {par.upper()} | Fechando operação.")
                             fechar_posicao_real(par.upper(), tipo, quantidade)
                             estado["em_operacao"] = False
                             avisado_tp3 = True
 
                         elif preco_atual >= tp2 and not avisado_tp2:
-                            notificar_telegram(f"🎯 TP2 atingido ({tp2:.2f}) | SL movido para TP1 ({tp1:.2f})")
+                            notificar_telegram(f"🎯 TP2 atingido ({tp2:.2f}) às {hora} | SL movido para TP1 ({tp1:.2f})")
                             estado["sl"] = tp1
                             avisado_tp2 = True
 
                         elif preco_atual >= tp1 and not avisado_tp1:
-                            notificar_telegram(f"🎯 TP1 atingido ({tp1:.2f}) | SL movido para entrada ({entrada:.2f})")
+                            notificar_telegram(f"🎯 TP1 atingido ({tp1:.2f}) às {hora} | SL movido para entrada ({entrada:.2f})")
                             estado["sl"] = entrada
                             avisado_tp1 = True
 
                         elif preco_atual <= estado["sl"] and not avisado_sl:
-                            notificar_telegram(f"🛑 STOP atingido ({estado['sl']:.2f}) | {par.upper()} | Fechando operação.")
+                            notificar_telegram(f"🛑 STOP atingido ({estado['sl']:.2f}) às {hora} | {par.upper()} | Fechando operação.")
                             fechar_posicao_real(par.upper(), tipo, quantidade)
                             estado["em_operacao"] = False
                             avisado_sl = True
 
                     elif tipo == "sell":
                         if preco_atual <= tp3 and not avisado_tp3:
-                            notificar_telegram(f"🎯 TP3 atingido ({tp3:.2f}) | {par.upper()} | Fechando operação.")
+                            notificar_telegram(f"🎯 TP3 atingido ({tp3:.2f}) às {hora} | {par.upper()} | Fechando operação.")
                             fechar_posicao_real(par.upper(), tipo, quantidade)
                             estado["em_operacao"] = False
                             avisado_tp3 = True
 
                         elif preco_atual <= tp2 and not avisado_tp2:
-                            notificar_telegram(f"🎯 TP2 atingido ({tp2:.2f}) | SL movido para TP1 ({tp1:.2f})")
+                            notificar_telegram(f"🎯 TP2 atingido ({tp2:.2f}) às {hora} | SL movido para TP1 ({tp1:.2f})")
                             estado["sl"] = tp1
                             avisado_tp2 = True
 
                         elif preco_atual <= tp1 and not avisado_tp1:
-                            notificar_telegram(f"🎯 TP1 atingido ({tp1:.2f}) | SL movido para entrada ({entrada:.2f})")
+                            notificar_telegram(f"🎯 TP1 atingido ({tp1:.2f}) às {hora} | SL movido para entrada ({entrada:.2f})")
                             estado["sl"] = entrada
                             avisado_tp1 = True
 
                         elif preco_atual >= estado["sl"] and not avisado_sl:
-                            notificar_telegram(f"🛑 STOP atingido ({estado['sl']:.2f}) | {par.upper()} | Fechando operação.")
+                            notificar_telegram(f"🛑 STOP atingido ({estado['sl']:.2f}) às {hora} | {par.upper()} | Fechando operação.")
                             fechar_posicao_real(par.upper(), tipo, quantidade)
                             estado["em_operacao"] = False
                             avisado_sl = True
 
-        except websockets.ConnectionClosed:
-            print("[WS] Conexão perdida. Reconectando em 2s...", flush=True)
-            await asyncio.sleep(2)
         except Exception as e:
             print(f"[ERRO] WebSocket: {e}", flush=True)
-            await asyncio.sleep(2)
+            await asyncio.sleep(5)
 
-# 🚀 Iniciar monitoramento com loop assíncrono
+# 🔄 Iniciador do agendador
 def iniciar_agendador():
-    global avisado_tp1, avisado_tp2, avisado_tp3, avisado_sl
-    avisado_tp1 = avisado_tp2 = avisado_tp3 = avisado_sl = False
-    print("🟢 Monitoramento via WebSocket iniciado", flush=True)
-
-    try:
-        loop = asyncio.get_event_loop()
-        loop.create_task(monitorar_via_websocket())
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.create_task(monitorar_via_websocket())
-        threading.Thread(target=loop.run_forever, daemon=True).start()
+    thread = threading.Thread(target=lambda: asyncio.run(monitorar_via_websocket()))
+    thread.start()
