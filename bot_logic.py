@@ -24,7 +24,6 @@ estado = {
     "sl": 0.0,
     "tipo": "",
     "quantidade": 0.0,
-    "timeframe": "",
     "hora_ultima_checagem": time.time(),
     "ativado": True
 }
@@ -35,6 +34,19 @@ def calcular_quantidade(ativo, preco_entrada, risco_percent=2, alavancagem=5):
     valor_total = saldo * alavancagem
     quantidade = valor_total / float(preco_entrada)
     return round(quantidade, 3)
+
+# 🔍 Verifica posição ativa no par
+def tem_posicao_ativa(par):
+    try:
+        symbol = par.replace("/", "")
+        posicoes = binance.fapiPrivateGetPositionRisk()
+        for pos in posicoes:
+            if pos["symbol"] == symbol:
+                return float(pos["positionAmt"]) != 0.0
+        return False
+    except Exception as e:
+        print(f"[ERRO] Verificação de posição: {e}", flush=True)
+        return False
 
 # ✅ Executa ordem real com suporte ao modo HEDGE
 def executar_ordem_real(par, tipo, quantidade, tentativas=3):
@@ -54,8 +66,16 @@ def executar_ordem_real(par, tipo, quantidade, tentativas=3):
                 params={"positionSide": position_side}
             )
 
-            print("[EXECUÇÃO] Ordem enviada com sucesso!", flush=True)
-            return ordem
+            time.sleep(2)  # tempo para a Binance atualizar a posição
+
+            if tem_posicao_ativa(par):
+                print("[EXECUÇÃO] Ordem confirmada na Binance!", flush=True)
+                notificar_telegram(f"✅ ORDEM REAL ENVIADA\nPar: {par}\nTipo: {tipo.upper()}\nQtd: {quantidade}")
+                return ordem
+            else:
+                print("[ERRO] Ordem enviada, mas nenhuma posição ativa encontrada.", flush=True)
+                notificar_telegram("⚠️ Ordem enviada, mas posição não confirmada.")
+                return None
 
         except ccxt.NetworkError as e:
             if "418" in str(e) or "Too many requests" in str(e):
@@ -65,11 +85,12 @@ def executar_ordem_real(par, tipo, quantidade, tentativas=3):
                 continue
 
         except Exception as e:
-            print(f"[ERRO] Falha ao enviar ordem: {e}", flush=True)
             notificar_telegram(f"❌ ERRO ao enviar ordem: {e}")
+            print(f"[ERRO] Falha ao enviar ordem: {e}", flush=True)
             return None
 
     notificar_telegram("❌ Todas as tentativas de enviar ordem falharam.")
+    print("[ERRO] Falha definitiva ao enviar ordem após várias tentativas.", flush=True)
     return None
 
 # ❌ Fechar posição real
@@ -78,7 +99,7 @@ def fechar_posicao_real(par, tipo, quantidade):
         lado_oposto = "sell" if tipo == "buy" else "buy"
         position_side = "LONG" if tipo == "buy" else "SHORT"
 
-        print(f"[FECHAMENTO] Fechando {position_side} de {quantidade} {par}", flush=True)
+        print(f"[FECHAMENTO] Enviando ordem para fechar {position_side} de {quantidade} {par}", flush=True)
 
         ordem = binance.create_order(
             symbol=par,
@@ -88,12 +109,13 @@ def fechar_posicao_real(par, tipo, quantidade):
             params={"positionSide": position_side}
         )
 
-        notificar_telegram(f"📉 POSIÇÃO ENCERRADA\nPar: {par} | Tipo: {tipo.upper()} | Qtd: {quantidade}")
+        notificar_telegram(f"📉 POSIÇÃO FECHADA: {par} | Lado: {tipo.upper()} | Qtd: {quantidade}")
+        print("[FECHAMENTO] Ordem de fechamento enviada com sucesso!", flush=True)
         return ordem
 
     except Exception as e:
-        print(f"[ERRO] Fechamento de posição: {e}", flush=True)
         notificar_telegram(f"❌ ERRO ao fechar posição: {e}")
+        print(f"[ERRO] Falha ao fechar posição: {e}", flush=True)
         return None
 
 # 🧠 Processa sinal recebido
@@ -102,26 +124,32 @@ def process_signal(data):
     print(data, flush=True)
 
     if not estado.get("ativado"):
+        print("[STATUS] Bot desativado. Ignorando sinal.", flush=True)
         return {"status": "desativado", "mensagem": "Bot desativado"}
 
     if estado["em_operacao"]:
+        notificar_telegram(
+            f"⚠️ SINAL IGNORADO (Já em operação)\n"
+            f"📱 Novo sinal recebido:\n"
+            f"Par: {data.get('ativo')}\n"
+            f"Tipo: {data.get('tipo').upper()}\n"
+            f"⏳ Aguarde o fim da operação atual."
+        )
+        print("[SINAL] Ignorado: já em operação.", flush=True)
         return {"status": "em_operacao", "mensagem": "Sinal ignorado pois já está em operação"}
 
     try:
         par = data["ativo"]
         entrada = float(data["entrada"])
         tipo = data["tipo"].lower()
-        timeframe = data.get("timeframe", "")
         risco_percent = float(data.get("risco_percent", 2))
-
         tp1 = entrada * (1 + float(data.get("tp1_percent", 2)) / 100) if tipo == "buy" else entrada * (1 - float(data.get("tp1_percent", 2)) / 100)
         tp2 = entrada * (1 + float(data.get("tp2_percent", 4)) / 100) if tipo == "buy" else entrada * (1 - float(data.get("tp2_percent", 4)) / 100)
         tp3 = entrada * (1 + float(data.get("tp3_percent", 6)) / 100) if tipo == "buy" else entrada * (1 - float(data.get("tp3_percent", 6)) / 100)
         sl = entrada * (1 - 0.01) if tipo == "buy" else entrada * (1 + 0.01)
-
         quantidade = calcular_quantidade(par, entrada, risco_percent)
 
-        print(f"[ORDEM] Par: {par} | Entrada: {entrada} | Quantidade: {quantidade}", flush=True)
+        print("[ORDEM] Par: {} | Entrada: {} | Quantidade: {}".format(par, entrada, quantidade), flush=True)
 
         resultado = executar_ordem_real(par, tipo, quantidade)
         if resultado:
@@ -134,27 +162,14 @@ def process_signal(data):
                 "tp3": tp3,
                 "sl": sl,
                 "tipo": tipo,
-                "quantidade": quantidade,
-                "timeframe": timeframe
+                "quantidade": quantidade
             })
-
-            emoji = "🟢" if tipo == "buy" else "🔴"
-            notificar_telegram(
-                f"{emoji} *ORDEM EXECUTADA!*\n"
-                f"📊 Par: *{par}*\n"
-                f"💵 Entrada: *{entrada:.2f}*\n"
-                f"📈 TP1: {tp1:.2f} | TP2: {tp2:.2f} | TP3: {tp3:.2f}\n"
-                f"🛡️ SL: {sl:.2f}\n"
-                f"⏱️ Timeframe: *{timeframe}*\n"
-                f"💰 Quantidade: *{quantidade}*"
-            )
-
             return {"status": "executado", "mensagem": "Sinal processado e ordem executada"}
         else:
-            return {"status": "falha", "mensagem": "Ordem não executada"}
+            return {"status": "falha", "mensagem": "Ordem não foi executada"}
 
     except Exception as e:
-        print(f"[ERRO] Sinal inválido: {e}", flush=True)
+        print(f"[ERRO] Problema ao processar sinal: {e}", flush=True)
         notificar_telegram(f"❌ Erro ao processar sinal: {e}")
         return {"status": "erro", "mensagem": str(e)}
 
